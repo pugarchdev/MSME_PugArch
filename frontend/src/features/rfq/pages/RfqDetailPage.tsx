@@ -148,6 +148,15 @@ const formatDisplayValue = (val: string, label?: string) => {
     }
   }
 
+  // System concatenated description cleanup
+  if (typeof val === 'string' && val.includes('Sourcing Method:')) {
+    return val
+      .replace(/Sourcing Method:\s*/gi, 'Sourcing Method: ')
+      .replace(/RFQValue:\s*/gi, 'RFQ • Value: ')
+      .replace(/Value:\s*INR\s*/gi, 'Value: ₹')
+      .replace(/Urgency:\s*/gi, ' • Urgency: ');
+  }
+
   // Capitalized CONSTANT_CASE strings
   if (typeof val === 'string' && val.match(/^[A-Z][A-Z0-9_]*$/)) {
     return val
@@ -266,8 +275,23 @@ export default function RfqDetailPage() {
   const error = (!!requestId && bidError) || (!!requirementId && reqError);
 
   const reqObj = reqData?.requirement || reqData;
+
+  const ownParticipation: any = user?.role === 'seller' ? (bidData?.participations || []).find((p: any) => 
+    Number(p.sellerId) === Number(user?.id) || (user?.organizationId && p.seller?.organizationId === user.organizationId)
+  ) : null;
+
   // Combine ownResponse from whichever path was used to reach this page
-  const ownResponse = reqData?.ownResponse || bidReqData?.ownResponse || null;
+  const ownResponse = reqData?.ownResponse || bidReqData?.ownResponse || (ownParticipation ? {
+    status: ownParticipation.status || 'SUBMITTED',
+    createdAt: ownParticipation.createdAt,
+    updatedAt: ownParticipation.updatedAt || ownParticipation.createdAt,
+    offeredPrice: ownParticipation.offeredPrice || ownParticipation.responseData?.offeredPrice,
+    offeredQuantity: ownParticipation.offeredQuantity || ownParticipation.responseData?.offeredQuantity,
+    deliveryTimeline: ownParticipation.deliveryTimeline || ownParticipation.responseData?.deliveryTimeline,
+    terms: ownParticipation.terms || ownParticipation.responseData?.terms,
+    message: ownParticipation.message || ownParticipation.responseData?.message,
+    responseData: ownParticipation.responseData,
+  } : null);
 
   // Map data from whichever source responded
   const rfqData: any = bidData ? {
@@ -784,17 +808,71 @@ export default function RfqDetailPage() {
               <Download className="h-4 w-4 text-blue-600" /> <span className="hidden sm:inline">Download</span> RFQ
             </Button>
             {user && user.role === 'seller' && (
-              <Button
-                type="button"
-                onClick={handleSubmitQuotation}
-                className="h-10 rounded-xl bg-gradient-to-r from-[#12335f] to-[#1a447c] hover:from-[#0b2447] hover:to-[#12335f] px-6 text-xs font-black uppercase tracking-wider text-white shadow-md shadow-blue-900/15 transition-all flex items-center gap-2 hover:scale-[1.01] active:scale-[0.99] hover:-translate-y-0.5"
-              >
-                {ownResponse && ownResponse.status !== 'DRAFT' ? 'View Submitted Quotation' : 'Submit Quotation'} <ArrowRight className="h-4 w-4" />
-              </Button>
+              ownResponse && ownResponse.status !== 'DRAFT' ? (
+                <Button
+                  type="button"
+                  onClick={handleSubmitQuotation}
+                  className="h-10 rounded-xl bg-emerald-700 hover:bg-emerald-800 px-6 text-xs font-black uppercase tracking-wider text-white shadow-md shadow-emerald-900/15 transition-all flex items-center gap-2 hover:scale-[1.01] active:scale-[0.99] hover:-translate-y-0.5"
+                >
+                  <CheckCircle className="h-4 w-4 text-emerald-200" /> View / Edit Quotation
+                </Button>
+              ) : ownResponse && ownResponse.status === 'DRAFT' ? (
+                <Button
+                  type="button"
+                  onClick={handleSubmitQuotation}
+                  className="h-10 rounded-xl bg-amber-600 hover:bg-amber-700 px-6 text-xs font-black uppercase tracking-wider text-white shadow-md shadow-amber-900/15 transition-all flex items-center gap-2 hover:scale-[1.01] active:scale-[0.99] hover:-translate-y-0.5"
+                >
+                  <Clock className="h-4 w-4 text-amber-200" /> Continue Draft Quotation
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  onClick={handleSubmitQuotation}
+                  className="h-10 rounded-xl bg-gradient-to-r from-[#12335f] to-[#1a447c] hover:from-[#0b2447] hover:to-[#12335f] px-6 text-xs font-black uppercase tracking-wider text-white shadow-md shadow-blue-900/15 transition-all flex items-center gap-2 hover:scale-[1.01] active:scale-[0.99] hover:-translate-y-0.5"
+                >
+                  Submit Quotation <ArrowRight className="h-4 w-4" />
+                </Button>
+              )
             )}
           </div>
         </div>
       </section>
+
+      {/* ── Submitted Quotation Success Indicator Banner ── */}
+      {user && user.role === 'seller' && ownResponse && ownResponse.status !== 'DRAFT' && (
+        <div className="rounded-2xl border border-emerald-200/90 bg-emerald-50/80 p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="flex items-center gap-3.5">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-2xs">
+              <ShieldCheck className="h-6 w-6 stroke-[2.5]" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-black text-emerald-950">Quotation Already Submitted</p>
+                <span className="rounded-full bg-emerald-200/90 px-2.5 py-0.5 text-[9px] font-black uppercase text-emerald-800 tracking-wider">
+                  Active Submission
+                </span>
+              </div>
+              <p className="text-xs font-semibold text-emerald-700 mt-1 flex flex-wrap items-center gap-1.5">
+                <span>Submitted on <strong className="font-extrabold text-emerald-900">{formatDateString(ownResponse.updatedAt || ownResponse.createdAt, true)}</strong></span>
+                {ownResponse.offeredPrice && (
+                  <>
+                    <span className="text-emerald-400">•</span>
+                    <span>Quoted Total: <strong className="font-black text-emerald-900">{formatCurrency(Number(ownResponse.offeredPrice))}</strong></span>
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+
+          <Button
+            type="button"
+            onClick={handleSubmitQuotation}
+            className="h-10 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white px-5 text-xs font-black uppercase tracking-wider shadow-sm transition-all flex items-center gap-2 shrink-0 self-end sm:self-center"
+          >
+            <Eye className="h-4 w-4" /> View / Edit Quotation
+          </Button>
+        </div>
+      )}
 
       {/* ── Sticky Quick Navigation Bar ── */}
       <div className="sticky top-4 z-40 bg-white/90 backdrop-blur-md border border-slate-200/80 rounded-2xl px-4 py-2.5 shadow-md transition-all duration-300 animate-in fade-in slide-in-from-top-2 duration-400">
@@ -1665,41 +1743,82 @@ export default function RfqDetailPage() {
                         </span>
                       </div>
 
-                      {/* Fields Grid */}
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                        {sec.fields.map((field, fieldIdx) => {
-                          const formattedVal = formatDisplayValue(field.value, field.label);
-                          const strVal = String(field.value).trim().toLowerCase();
-                          const isYes = strVal === 'yes' || strVal === 'true';
-                          const isNo = strVal === 'no' || strVal === 'false';
+                      {/* Enterprise Description List & Property Grid */}
+                      {(() => {
+                        const longTextFields = sec.fields.filter(f => {
+                          const val = String(f.value || '');
+                          return val.length > 80 || f.label.toLowerCase().includes('description') || f.label.toLowerCase().includes('reason') || f.label.toLowerCase().includes('justification') || f.label.toLowerCase().includes('notes');
+                        });
 
-                          return (
-                            <div
-                              key={`${field.label}-${fieldIdx}`}
-                              className="rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50/60 via-slate-50/20 to-white p-4 hover:bg-white transition-all duration-200 hover:-translate-y-1 hover:border-[#12335f]/30 hover:shadow-md group cursor-default"
-                            >
-                              <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400 group-hover:text-[#12335f] transition-colors">
-                                {field.label}
-                              </p>
-                              <div className="mt-1.5">
-                                {isYes ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-black text-emerald-700 border border-emerald-200/80 uppercase shadow-2xs">
-                                    ✓ Yes
-                                  </span>
-                                ) : isNo ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-black text-slate-600 border border-slate-200 uppercase shadow-2xs">
-                                    No
-                                  </span>
-                                ) : (
-                                  <p className="text-xs font-black leading-relaxed text-slate-900 break-words whitespace-pre-wrap">
-                                    {formattedVal}
-                                  </p>
-                                )}
+                        const propertyFields = sec.fields.filter(f => !longTextFields.includes(f));
+
+                        return (
+                          <div className="space-y-4">
+                            {/* Property Grid (Clean Spec Sheet Style with Subtle Hairline Dividers) */}
+                            {propertyFields.length > 0 && (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4 bg-gradient-to-br from-slate-50/80 via-slate-50/40 to-white p-5 rounded-2xl border border-slate-200/70 shadow-2xs">
+                                {propertyFields.map((field, fieldIdx) => {
+                                  const formattedVal = formatDisplayValue(field.value, field.label);
+                                  const strVal = String(field.value).trim().toLowerCase();
+                                  const isYes = strVal === 'yes' || strVal === 'true';
+                                  const isNo = strVal === 'no' || strVal === 'false';
+                                  const isCurrency = field.label.toLowerCase().includes('value') || field.label.toLowerCase().includes('price') || field.label.toLowerCase().includes('amount') || field.label.toLowerCase().includes('budget');
+
+                                  return (
+                                    <div
+                                      key={`${field.label}-${fieldIdx}`}
+                                      className="flex flex-col py-1.5 border-b border-slate-200/60 last:border-b-0 group"
+                                    >
+                                      <span className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400 group-hover:text-[#12335f] transition-colors flex items-center gap-1">
+                                        <span className="h-1 w-1 rounded-full bg-slate-300 group-hover:bg-blue-600 transition-colors" />
+                                        {field.label}
+                                      </span>
+                                      <div className="mt-1">
+                                        {isYes ? (
+                                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-black text-emerald-700 border border-emerald-200/80 uppercase shadow-2xs">
+                                            ✓ Yes
+                                          </span>
+                                        ) : isNo ? (
+                                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-black text-slate-600 border border-slate-200 uppercase shadow-2xs">
+                                            No
+                                          </span>
+                                        ) : (
+                                          <span className={cn(
+                                            "text-xs font-black leading-relaxed break-words",
+                                            isCurrency ? "text-emerald-700 text-sm font-black" : "text-slate-900"
+                                          )}>
+                                            {formattedVal}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
                               </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                            )}
+
+                            {/* Long Text Callout Blocks */}
+                            {longTextFields.length > 0 && (
+                              <div className="space-y-3">
+                                {longTextFields.map((field, fieldIdx) => (
+                                  <div
+                                    key={`long-${field.label}-${fieldIdx}`}
+                                    className="p-4 rounded-2xl bg-gradient-to-r from-blue-50/40 via-indigo-50/20 to-white border border-blue-100/80 border-l-4 border-l-[#12335f] shadow-2xs hover:shadow-xs transition-all"
+                                  >
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-[#12335f] block mb-1.5 flex items-center gap-1.5">
+                                      <FileText className="h-3.5 w-3.5 text-blue-600" />
+                                      {field.label}
+                                    </span>
+                                    <p className="text-xs font-semibold leading-relaxed text-slate-800 whitespace-pre-wrap break-words">
+                                      {formatDisplayValue(field.value, field.label)}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })}

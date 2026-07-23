@@ -69,6 +69,47 @@ const assertBidTransition = (from: string, to: string, message?: string) => {
   }
 };
 
+const firstPresent = (...values: any[]) => values.find(value => value !== undefined && value !== null && String(value).trim() !== '');
+
+const arrayFromPacket = (...values: any[]) => {
+  for (const value of values) {
+    if (Array.isArray(value) && value.length) return value;
+  }
+  return [];
+};
+
+const normalizeBidItem = (item: any, index: number) => {
+  const specifications = item?.specifications && typeof item.specifications === 'object' ? item.specifications : {};
+  const technicalSpecification = firstPresent(item?.technicalSpecification, item?.technicalSpecifications, item?.specification, item?.specificationsText, item?.requirements, specifications.technicalSpecification, specifications.technicalSpecifications);
+  const hsnSac = firstPresent(item?.hsn, item?.hsnCode, item?.sac, item?.sacCode, item?.hsn_sac_code, item?.product?.hsnCode, specifications.hsn, specifications.hsnCode, specifications.sac, specifications.sacCode, specifications.hsn_sac_code);
+  const unit = firstPresent(item?.unit, item?.unitOfMeasure, item?.uom, item?.unitOfMeasurement, item?.product?.unitOfMeasure);
+  return {
+    ...item,
+    id: String(firstPresent(item?.id, item?.lineItemId, item?.itemId, index + 1)),
+    itemName: firstPresent(item?.itemName, item?.name, item?.title, item?.productName, item?.serviceName, item?.product?.name, item?.description, item?.itemDescription) || `Item ${index + 1}`,
+    description: firstPresent(item?.description, item?.itemDescription, item?.scopeOfWork, item?.productDescription, item?.serviceDescription, specifications.description) || technicalSpecification || '',
+    quantity: Number(firstPresent(item?.quantity, item?.qty, item?.requiredQuantity, 1)) || 1,
+    unit: unit || 'Nos',
+    unitOfMeasure: unit || 'Nos',
+    technicalSpecification: technicalSpecification || '',
+    brandRequirement: firstPresent(item?.brandRequirement, item?.brand, item?.make, item?.brand_preference, item?.oemBrandName, specifications.brandRequirement, specifications.brand) || null,
+    warrantyRequirement: firstPresent(item?.warrantyRequirement, item?.warranty, item?.warrantyRequired, item?.warrantyPeriod, specifications.warrantyRequirement, specifications.warranty) || null,
+    deliveryRequirement: firstPresent(item?.deliveryRequirement, item?.deliverySchedule, item?.deliveryTimeline, item?.deliverySla, specifications.deliveryRequirement, specifications.deliverySchedule) || null,
+    buyerRemarks: firstPresent(item?.buyerRemarks, item?.remarks, item?.buyerRemark, item?.notes, specifications.buyerRemarks, specifications.remarks) || null,
+    hsnSac: hsnSac || '',
+    hsn: firstPresent(item?.hsn, item?.hsnCode, item?.product?.hsnCode, specifications.hsn, specifications.hsnCode) || hsnSac || '',
+    sac: firstPresent(item?.sac, item?.sacCode, specifications.sac, specifications.sacCode) || '',
+    gstPercentage: firstPresent(item?.gstPercentage, item?.gst, item?.taxRate, specifications.gstPercentage, specifications.gst) ?? null,
+    priceQuoteBasis: firstPresent(item?.priceQuoteBasis, item?.quoteBasis) || null
+  };
+};
+
+const normalizeBidItems = (bid: any) => {
+  const packet = bid?.technicalPacket && typeof bid.technicalPacket === 'object' ? bid.technicalPacket : {};
+  const wizardData = packet?.wizardData && typeof packet.wizardData === 'object' ? packet.wizardData : {};
+  return arrayFromPacket(bid?.items, packet?.items, packet?.boq, packet?.boqItems, packet?.lineItems, packet?.itemRateSchedule, wizardData?.items, wizardData?.boq, wizardData?.lineItems).map(normalizeBidItem);
+};
+
 const rankToFinalStatus = (rank: number) => {
   if (rank === 1) return 'L1';
   if (rank === 2) return 'L2';
@@ -354,6 +395,9 @@ export const serializeBid = (bid: any, options: { actor?: Actor; detail?: boolea
     return isAdmin || isBuyerOwner;
   });
 
+  const tenderItems = normalizeBidItems(bid);
+  const sellerTechnicalPacket = bid.technicalPacket && typeof bid.technicalPacket === 'object' ? { ...(bid.technicalPacket as any), items: tenderItems } : (tenderItems.length ? { items: tenderItems } : bid.technicalPacket);
+
   return {
     id: bid.id,
     bidNumber: bid.bidNumber,
@@ -392,7 +436,8 @@ export const serializeBid = (bid: any, options: { actor?: Actor; detail?: boolea
     allowReverseAuction: bid.allowReverseAuction,
     allowBoq: bid.allowBoq,
     packetType: bid.packetType,
-    technicalPacket: isAdmin || isBuyerOwner || actor?.role === 'seller' ? bid.technicalPacket : undefined,
+    technicalPacket: isAdmin || isBuyerOwner || actor?.role === 'seller' ? sellerTechnicalPacket : undefined,
+    items: tenderItems,
     financialPacket: canSeeFinancial ? bid.financialPacket : undefined,
     termsAndConditions: bid.termsAndConditions || [],
     eligibilityCriteria: bid.eligibilityCriteria || [],
@@ -1414,7 +1459,11 @@ export const finalSubmitParticipation = async (req: AuthRequest, bidId: string, 
   } catch (err) {
     logger.warn({ err }, 'Failed to send bid submission notification');
   }
-  return updated;
+  const saved = await db.procurementBidParticipation.findUnique({
+    where: { id: updated.id },
+    include: { documents: true, clarifications: { include: { files: true } }, evaluations: true, awards: true }
+  });
+  return serializeParticipation(saved || updated, { canSeeFinancial: true, bid, ownView: true });
 };
 
 export const askClarification = async (req: AuthRequest, bidId: string, body: any) => {

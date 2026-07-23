@@ -103,6 +103,48 @@ const buildQueryString = (params: Record<string, string | number | undefined> = 
       .map(([key, value]) => [key, String(value)])
   ).toString();
 
+const firstValue = (...values: any[]) => values.find(value => value !== undefined && value !== null && String(value).trim() !== '');
+
+const asArray = (...values: any[]) => {
+  for (const value of values) {
+    if (Array.isArray(value) && value.length) return value;
+  }
+  return [];
+};
+
+const normalizeTenderItem = (item: any, index: number) => {
+  const specifications = item?.specifications && typeof item.specifications === 'object' ? item.specifications : {};
+  const name = firstValue(item?.itemName, item?.name, item?.title, item?.productName, item?.serviceName, item?.product?.name, item?.description, item?.itemDescription);
+  const description = firstValue(item?.description, item?.itemDescription, item?.scopeOfWork, item?.productDescription, item?.serviceDescription, specifications.description);
+  const unit = firstValue(item?.unit, item?.unitOfMeasure, item?.uom, item?.unitOfMeasurement, item?.product?.unitOfMeasure);
+  const technicalSpecification = firstValue(item?.technicalSpecification, item?.technicalSpecifications, item?.specification, item?.specificationsText, item?.requirements, specifications.technicalSpecification, specifications.technicalSpecifications);
+  const hsnSac = firstValue(item?.hsn, item?.hsnCode, item?.sac, item?.sacCode, item?.hsn_sac_code, item?.product?.hsnCode, specifications.hsn, specifications.hsnCode, specifications.sac, specifications.sacCode, specifications.hsn_sac_code);
+  return {
+    ...item,
+    id: String(firstValue(item?.id, item?.lineItemId, item?.itemId, index + 1)),
+    itemName: name || `Item ${index + 1}`,
+    description: description || technicalSpecification || '',
+    quantity: Number(firstValue(item?.quantity, item?.qty, item?.requiredQuantity, 1)) || 1,
+    unit: unit || 'Nos',
+    unitOfMeasure: unit || 'Nos',
+    technicalSpecification: technicalSpecification || '',
+    brandRequirement: firstValue(item?.brandRequirement, item?.brand, item?.make, item?.brand_preference, item?.oemBrandName, specifications.brandRequirement, specifications.brand),
+    warrantyRequirement: firstValue(item?.warrantyRequirement, item?.warranty, item?.warrantyRequired, item?.warrantyPeriod, specifications.warrantyRequirement, specifications.warranty),
+    deliveryRequirement: firstValue(item?.deliveryRequirement, item?.deliverySchedule, item?.deliveryTimeline, item?.deliverySla, specifications.deliveryRequirement, specifications.deliverySchedule),
+    buyerRemarks: firstValue(item?.buyerRemarks, item?.remarks, item?.buyerRemark, item?.notes, specifications.buyerRemarks, specifications.remarks),
+    hsnSac: hsnSac || '',
+    hsn: firstValue(item?.hsn, item?.hsnCode, item?.product?.hsnCode, specifications.hsn, specifications.hsnCode) || hsnSac || '',
+    sac: firstValue(item?.sac, item?.sacCode, specifications.sac, specifications.sacCode) || '',
+    gstPercentage: firstValue(item?.gstPercentage, item?.gst, item?.taxRate, specifications.gstPercentage, specifications.gst),
+    priceQuoteBasis: firstValue(item?.priceQuoteBasis, item?.quoteBasis)
+  };
+};
+
+const normalizeTenderItems = (raw: any, pkt: any, wizardData: any) => {
+  const sourceItems = asArray(raw?.items, pkt?.items, pkt?.boq, pkt?.boqItems, pkt?.lineItems, pkt?.itemRateSchedule, wizardData?.items, wizardData?.boq, wizardData?.lineItems);
+  return sourceItems.map(normalizeTenderItem);
+};
+
 export const normalizeBid = (raw: any): ProcurementBid => {
   const participations = raw.participations || [];
   const results = participations.length ? participations.map((p: any, index: number) => {
@@ -179,8 +221,8 @@ export const normalizeBid = (raw: any): ProcurementBid => {
   // Description
   const description = raw.description || basics.description || '';
 
-  // Items from requirement
-  const items = raw.items || [];
+  // Items from buyer-created tender / BOQ payload
+  const items = normalizeTenderItems(raw, pkt, wizardData);
   const itemName = category || title || (items.length ? items[0]?.itemName || items[0]?.description : '') || '';
 
   // Terms and eligibility
@@ -262,7 +304,7 @@ export const normalizeBid = (raw: any): ProcurementBid => {
       fileAssetId: doc.fileAssetId,
       url: doc.fileUrl || doc.url,
     })),
-    technicalPacket: pkt || undefined,
+    technicalPacket: pkt ? { ...pkt, items } : { items },
     buyer: raw.buyer || null,
     buyerOrganization: raw.buyerOrganization || raw.organization || null,
   };

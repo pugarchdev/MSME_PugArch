@@ -50,7 +50,24 @@ type ParticipationDocument = {
   documentCategory?: string;
   mimeType?: string;
   fileSize?: number;
+  fileUrl?: string | null;
+  fileAssetId?: number | null;
   uploadedAt?: string;
+};
+
+type BoqTechnicalOffer = {
+  makeBrand: string;
+  model: string;
+  warrantyDetails: string;
+  deliveryTimeline: string;
+  complianceRemarks: string;
+  deviation: string;
+};
+
+type BoqFinancialOffer = {
+  unitPrice: string;
+  gstPercentage: string;
+  lineTotal: string;
 };
 
 type ParticipationState = {
@@ -61,6 +78,9 @@ type ParticipationState = {
   finalStatus?: string;
   rank?: number | null;
   documents?: ParticipationDocument[];
+  participationNumber?: string;
+  acknowledgement?: any;
+  offeredItemDescription?: string;
   quotedAmount?: number | null;
   totalAmount?: number | null;
   rejectionReason?: string;
@@ -112,6 +132,61 @@ const textAreaClass = 'min-h-24 w-full rounded-lg border border-slate-200 bg-sla
 const surfaceClass = 'rounded-2xl bg-white shadow-sm ring-1 ring-slate-100 transition-all duration-300 ease-out';
 const panelClass = 'rounded-xl bg-slate-50/50 p-5 ring-1 ring-slate-100 transition-all duration-300 ease-out';
 
+type TenderBoqItem = {
+  id: string;
+  itemName: string;
+  description?: string;
+  quantity: number;
+  unit: string;
+  unitOfMeasure?: string;
+  technicalSpecification?: string;
+  brandRequirement?: string;
+  warrantyRequirement?: string;
+  deliveryRequirement?: string;
+  buyerRemarks?: string;
+  hsnSac?: string;
+  hsn?: string;
+  sac?: string;
+  gstPercentage?: string | number | null;
+  priceQuoteBasis?: string | null;
+};
+
+const asTenderItems = (bid?: ProcurementBid | null): TenderBoqItem[] => {
+  const packet = bid?.technicalPacket && typeof bid.technicalPacket === 'object' ? bid.technicalPacket : {};
+  const rawItems = Array.isArray(packet.items) ? packet.items : [];
+  return rawItems.map((item: any, index: number) => ({
+    ...item,
+    id: String(item.id || index + 1),
+    itemName: String(item.itemName || item.name || item.description || `Item ${index + 1}`),
+    description: item.description || item.itemDescription || '',
+    quantity: Number(item.quantity) || 1,
+    unit: item.unit || item.unitOfMeasure || item.uom || 'Nos',
+    unitOfMeasure: item.unitOfMeasure || item.unit || item.uom || 'Nos',
+    technicalSpecification: item.technicalSpecification || item.technicalSpecifications || item.specification || item.specifications?.itemType || '',
+    brandRequirement: item.brandRequirement || item.brand || item.make || item.specifications?.brand_preference || '',
+    warrantyRequirement: item.warrantyRequirement || item.warranty || '',
+    deliveryRequirement: item.deliveryRequirement || item.deliverySchedule || item.deliveryTimeline || '',
+    buyerRemarks: item.buyerRemarks || item.remarks || item.notes || '',
+    hsnSac: item.hsnSac || item.hsn || item.hsnCode || item.sac || item.sacCode || item.specifications?.hsn_sac_code || '',
+    hsn: item.hsn || item.hsnCode || item.specifications?.hsn_sac_code || '',
+    sac: item.sac || item.sacCode || item.specifications?.hsn_sac_code || '',
+    gstPercentage: item.gstPercentage ?? item.gst ?? item.specifications?.gst ?? null,
+    priceQuoteBasis: item.priceQuoteBasis || null,
+  }));
+};
+
+const isBoqTender = (bid?: ProcurementBid | null) => {
+  const type = String(bid?.procurementType || bid?.bidType || '').toUpperCase().replace(/[-\s]/g, '_');
+  return ['BOQ_BASED_BID', 'BOQ_BID', 'OPEN_TENDER', 'LIMITED_TENDER'].includes(type) || asTenderItems(bid).length > 1;
+};
+
+const getDefaultFinancialOffer = (item?: TenderBoqItem): BoqFinancialOffer => ({
+  unitPrice: '',
+  gstPercentage: item?.gstPercentage !== undefined && item?.gstPercentage !== null && String(item.gstPercentage) !== '' ? String(item.gstPercentage) : '18',
+  lineTotal: '0'
+});
+
+
 export default function BidParticipationPage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -130,6 +205,8 @@ export default function BidParticipationPage() {
   const [technicalFiles, setTechnicalFiles] = useState<PendingFile[]>([]);
   const [financialFile, setFinancialFile] = useState<PendingFile | null>(null);
   const [previewDocument, setPreviewDocument] = useState<DocumentPreview | null>(null);
+  const [boqTechnicalOffers, setBoqTechnicalOffers] = useState<Record<string, BoqTechnicalOffer>>({});
+  const [boqFinancialOffers, setBoqFinancialOffers] = useState<Record<string, BoqFinancialOffer>>({});
   const [technicalOffer, setTechnicalOffer] = useState({
     makeBrand: '',
     model: '',
@@ -301,12 +378,13 @@ export default function BidParticipationPage() {
   const canSubmit = Boolean(participation?.id && uploadedTechnicalDocs.length && (bid?.procurementType === 'RFI' || uploadedFinancialDocs.length || participation?.quotedAmount) && declaration && !isSubmitted);
   const technicalOfferStarted = Object.values(technicalOffer).some(value => Boolean(String(value || '').trim()));
   const financialQuoteStarted = Boolean(quote.quotedAmount || uploadedFinancialDocs.length || participation?.quotedAmount);
+
   const activeStepIndex = Math.max(activeSteps.findIndex(item => item.id === step), 0);
   const navProgress = activeSteps.length > 0 ? Math.round(((activeStepIndex + 1) / activeSteps.length) * 100) : 0;
   const submitRequirements = [
     { ok: Boolean(participation?.id), label: participation?.id ? `Participation #${participation.id}` : 'Participation started' },
     { ok: uploadedTechnicalDocs.length > 0, label: `${uploadedTechnicalDocs.length} technical document(s)` },
-    ...(bid?.procurementType === 'RFI' ? [] : [{ ok: Boolean(uploadedFinancialDocs.length || participation?.quotedAmount), label: 'Financial quote saved' }]),
+    ...(bid?.procurementType === 'RFI' ? [] : [{ ok: financialQuoteStarted, label: 'Financial quote saved' }]),
     { ok: declaration, label: 'Declaration accepted' },
   ];
   const completedStepIds = new Set<number>([
@@ -757,8 +835,11 @@ export default function BidParticipationPage() {
                   />
                 ) : (
                   <TechnicalOfferStep 
+                    bid={bid}
                     value={technicalOffer} 
                     onChange={setTechnicalOffer} 
+                    boqOffers={boqTechnicalOffers}
+                    setBoqOffers={setBoqTechnicalOffers}
                     onNext={() => goToStep(3)} 
                     disabled={!canPrepare} 
                     onSaveDraft={saveDraft}
@@ -790,6 +871,8 @@ export default function BidParticipationPage() {
                   canSave={canUpload}
                   quote={quote}
                   setQuote={setQuote}
+                  boqOffers={boqFinancialOffers}
+                  setBoqOffers={setBoqFinancialOffers}
                   file={financialFile}
                   uploadedDocs={uploadedFinancialDocs}
                   saving={savingFinancial}
@@ -814,6 +897,10 @@ export default function BidParticipationPage() {
                   participation={participation}
                   technicalDocs={uploadedTechnicalDocs}
                   financialDocs={uploadedFinancialDocs}
+                  technicalOffer={technicalOffer}
+                  boqTechnicalOffers={boqTechnicalOffers}
+                  quote={quote}
+                  boqFinancialOffers={boqFinancialOffers}
                   declaration={declaration}
                   setDeclaration={setDeclaration}
                   onNext={() => goToStep(6)}
@@ -823,7 +910,7 @@ export default function BidParticipationPage() {
                 />
               )}
               {step === 6 && (
-                <SubmitStep canSubmit={canSubmit} submitted={isSubmitted} submitting={submitting} requirements={submitRequirements} onSubmit={submitFinal} />
+                <SubmitStep canSubmit={canSubmit} submitted={isSubmitted} submitting={submitting} requirements={submitRequirements} participation={participation} onSubmit={submitFinal} />
               )}
             </div>
           </section>
@@ -853,21 +940,78 @@ function ReadyRow({ ok, label }: { ok: boolean; label: string }) {
   );
 }
 
-function TechnicalOfferStep({ value, onChange, onNext, onSaveDraft, savingDraft, disabled }: { value: any; onChange: (next: any) => void; onNext: () => void; onSaveDraft: () => void; savingDraft: boolean; disabled: boolean }) {
+function TechnicalOfferStep({ bid, value, onChange, boqOffers, setBoqOffers, onNext, onSaveDraft, savingDraft, disabled }: { bid: any; value: any; onChange: (next: any) => void; boqOffers: Record<string, BoqTechnicalOffer>; setBoqOffers: React.Dispatch<React.SetStateAction<Record<string, BoqTechnicalOffer>>>; onNext: () => void; onSaveDraft: () => void; savingDraft: boolean; disabled: boolean }) {
+  const items = asTenderItems(bid);
+  const isBoq = isBoqTender(bid) && items.length > 0;
+  
   const update = (key: string, next: string) => onChange({ ...value, [key]: next });
+  const updateBoq = (itemId: string, key: keyof BoqTechnicalOffer, next: string) => {
+    setBoqOffers(prev => ({
+      ...prev,
+      [itemId]: { ...(prev[itemId] || { makeBrand: '', model: '', warrantyDetails: '', deliveryTimeline: '', complianceRemarks: '', deviation: '' }), [key]: next }
+    }));
+  };
+
   return (
     <div>
       <StepTitle icon={<BadgeCheck className="h-5 w-5" />} title="Technical Offer" subtitle="Enter product/service specifics that will be attached to your financial quote save." />
-      <div className="mt-4 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        <Input label="Make/Brand" value={value.makeBrand} onChange={next => update('makeBrand', next)} disabled={disabled} />
-        <Input label="Model" value={value.model} onChange={next => update('model', next)} disabled={disabled} />
-        <Field label="Offered product/service description" value={value.offeredItemDescription} onChange={next => update('offeredItemDescription', next)} disabled={disabled} />
-        <Field label="Technical compliance remarks" value={value.complianceRemarks} onChange={next => update('complianceRemarks', next)} disabled={disabled} />
-        <Input label="Delivery timeline" value={value.deliveryTimeline} onChange={next => update('deliveryTimeline', next)} disabled={disabled} />
-        <Input label="Warranty details" value={value.warrantyDetails} onChange={next => update('warrantyDetails', next)} disabled={disabled} />
-        <Input label="Service support" value={value.serviceSupport} onChange={next => update('serviceSupport', next)} disabled={disabled} />
-        <Input label="Deviation, if any" value={value.deviation} onChange={next => update('deviation', next)} disabled={disabled} />
-      </div>
+      
+      {isBoq && items.length > 0 ? (
+        <div className="mt-4 space-y-8">
+          {items.map((item: any, idx: number) => {
+            const boq = boqOffers[item.id] || { makeBrand: '', model: '', warrantyDetails: '', deliveryTimeline: '', complianceRemarks: '', deviation: '' };
+            return (
+              <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50/50 p-5 ring-1 ring-slate-100">
+                <div className="mb-4 flex items-center justify-between border-b border-slate-200/60 pb-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Item {idx + 1}: {item.itemName}</h3>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">{item.description}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-bold text-slate-800">{item.quantity} {item.unit}</p>
+                    {item.hsnCode && <p className="text-[10px] font-semibold text-slate-500">HSN: {item.hsnCode}</p>}
+                  </div>
+                </div>
+                {item.technicalRequirements && (
+                  <div className="mb-5 rounded-xl border border-blue-100 bg-blue-50/50 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-blue-800">Buyer Requirements</p>
+                    <p className="mt-1 text-xs font-semibold text-blue-900">{item.technicalRequirements}</p>
+                  </div>
+                )}
+                <div className="mb-5 grid gap-2 text-[11px] font-semibold text-slate-600 md:grid-cols-2">
+                  {item.technicalSpecification && <div><span className="text-slate-400">Technical Specs:</span> {item.technicalSpecification}</div>}
+                  {item.brandRequirement && <div><span className="text-slate-400">Brand/Make Requirement:</span> {item.brandRequirement}</div>}
+                  {item.specifications?.brand_preference && <div><span className="text-slate-400">Brand Preference:</span> {item.specifications.brand_preference}</div>}
+                  {item.warrantyRequirement && <div><span className="text-slate-400">Warranty Requirement:</span> {item.warrantyRequirement}</div>}
+                  {item.deliveryRequirement && <div><span className="text-slate-400">Delivery Requirement:</span> {item.deliveryRequirement}</div>}
+                  {item.buyerRemarks && <div className="md:col-span-2"><span className="text-slate-400">Buyer Remarks:</span> {item.buyerRemarks}</div>}
+                </div>
+                
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                  <Input label="Offered Brand" value={boq.makeBrand} onChange={next => updateBoq(item.id, 'makeBrand', next)} disabled={disabled} required />
+                  <Input label="Offered Model" value={boq.model} onChange={next => updateBoq(item.id, 'model', next)} disabled={disabled} required />
+                  <Input label="Warranty Offered" value={boq.warrantyDetails} onChange={next => updateBoq(item.id, 'warrantyDetails', next)} disabled={disabled} />
+                  <Input label="Delivery Timeline" value={boq.deliveryTimeline} onChange={next => updateBoq(item.id, 'deliveryTimeline', next)} disabled={disabled} />
+                  <Input label="Technical Deviations" value={boq.deviation} onChange={next => updateBoq(item.id, 'deviation', next)} disabled={disabled} />
+                  <Field label="Compliance Remarks" value={boq.complianceRemarks} onChange={next => updateBoq(item.id, 'complianceRemarks', next)} disabled={disabled} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="mt-4 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <Input label="Offered Brand" value={value.makeBrand} onChange={next => update('makeBrand', next)} disabled={disabled} />
+          <Input label="Offered Model" value={value.model} onChange={next => update('model', next)} disabled={disabled} />
+          <Field label="Offered product/service description" value={value.offeredItemDescription} onChange={next => update('offeredItemDescription', next)} disabled={disabled} />
+          <Field label="Technical compliance remarks" value={value.complianceRemarks} onChange={next => update('complianceRemarks', next)} disabled={disabled} />
+          <Input label="Delivery timeline" value={value.deliveryTimeline} onChange={next => update('deliveryTimeline', next)} disabled={disabled} />
+          <Input label="Warranty Offered" value={value.warrantyDetails} onChange={next => update('warrantyDetails', next)} disabled={disabled} />
+          <Input label="Service support" value={value.serviceSupport} onChange={next => update('serviceSupport', next)} disabled={disabled} />
+          <Input label="Technical Deviations" value={value.deviation} onChange={next => update('deviation', next)} disabled={disabled} />
+        </div>
+      )}
+
       <div className="sticky bottom-0 z-10 mt-6 flex justify-end gap-3 border-t border-slate-100 bg-white/90 p-4 backdrop-blur">
         {!disabled && (
           <button type="button" onClick={onSaveDraft} disabled={savingDraft} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0">
@@ -1041,6 +1185,8 @@ function TechnicalDocumentsStep({ canSelectFiles, canUpload, files, uploadedDocs
 
 function FinancialQuoteStep({
   bid,
+  boqOffers,
+  setBoqOffers,
   participation,
   quote,
   setQuote,
@@ -1062,6 +1208,8 @@ function FinancialQuoteStep({
   savingDraft
 }: {
   bid: ProcurementBid;
+  boqOffers: Record<string, BoqFinancialOffer>;
+  setBoqOffers: React.Dispatch<React.SetStateAction<Record<string, BoqFinancialOffer>>>;
   participation: ParticipationState;
   quote: { quotedAmount: string; gstPercentage: string; totalAmount: string };
   setQuote: React.Dispatch<React.SetStateAction<{ quotedAmount: string; gstPercentage: string; totalAmount: string }>>;
@@ -1082,9 +1230,40 @@ function FinancialQuoteStep({
   onSaveDraft: () => void;
   savingDraft: boolean;
 }) {
-  const isBoq = bid?.procurementType === 'BOQ_BASED_BID';
+  const isBoq = bid?.procurementType === 'BOQ_BASED_BID' || bid?.procurementType === 'OPEN_TENDER' || bid?.procurementType === 'LIMITED_TENDER';
   const isRateContract = bid?.procurementType === 'RATE_CONTRACT';
   const isRfq = bid?.procurementType === 'RFQ';
+  const items = Array.isArray(bid?.technicalPacket?.items) ? bid.technicalPacket.items : [];
+
+  const updateBoq = (itemId: string, key: keyof BoqFinancialOffer, next: string, qty: number) => {
+    setBoqOffers(prev => {
+      const current = prev[itemId] || getDefaultFinancialOffer(items.find(item => item.id === itemId));
+      const updated = { ...current, [key]: next.replace(/[^\d.]/g, '') };
+      
+      const price = Number(updated.unitPrice) || 0;
+      const gst = Number(updated.gstPercentage) || 0;
+      const total = (price * qty) + (price * qty * gst / 100);
+      updated.lineTotal = String(Math.round(total * 100) / 100);
+      
+      return { ...prev, [itemId]: updated };
+    });
+  };
+
+  useEffect(() => {
+    if (isBoq && items.length > 0) {
+      let grandTotal = 0;
+      let totalQuoted = 0;
+      items.forEach(item => {
+        const offer = boqOffers[item.id] || getDefaultFinancialOffer(item);
+        const price = Number(offer.unitPrice) || 0;
+        const qty = Number(item.quantity) || 1;
+        const gst = Number(offer.gstPercentage) || 0;
+        totalQuoted += price * qty;
+        grandTotal += price * qty + (price * qty * gst / 100);
+      });
+      setQuote({ quotedAmount: String(totalQuoted), gstPercentage: '', totalAmount: String(Math.round(grandTotal * 100) / 100) });
+    }
+  }, [boqOffers, isBoq, items, setQuote]);
 
   const boqTemplates = useMemo(() => {
     return (bid?.documents || []).filter(doc => 
@@ -1097,53 +1276,97 @@ function FinancialQuoteStep({
     <div>
       <StepTitle icon={<IndianRupee className="h-5 w-5" />} title="Financial Quote" subtitle="Upload the commercial quote and save sealed quotation values before final submission." />
       
-      {isBoq && (
-        <div className={`${panelClass} mt-4 p-4`}>
-          <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-800">BOQ Excel Template Download</h4>
-          <p className="mt-1 text-xs font-bold text-slate-600">Please download the template, fill in your line-item rates, and upload the completed sheet below.</p>
-          <div className="mt-3">
-            {boqTemplates.length > 0 ? boqTemplates.map(doc => (
-              <a
-                key={doc.id}
-                href={doc.fileUrl || `/api/files/${doc.fileAssetId}/view`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex h-9 items-center gap-2 rounded-xl px-4 text-xs font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
-                style={{ backgroundColor: 'var(--bid-primary)' }}
-              >
-                Download {doc.fileName || 'BOQ Template'}
-              </a>
-            )) : (
-              <span className="text-xs font-bold text-slate-500">No BOQ template found in attachments. Please contact the buyer.</span>
-            )}
+      {isBoq && items.length > 0 ? (
+        <div className="mt-4">
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white ring-1 ring-slate-100 shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3 border-b border-slate-200">Item</th>
+                    <th className="px-4 py-3 border-b border-slate-200 w-24">Qty</th>
+                    <th className="px-4 py-3 border-b border-slate-200 w-32">Unit Price (₹)</th>
+                    <th className="px-4 py-3 border-b border-slate-200 w-24">GST %</th>
+                    <th className="px-4 py-3 border-b border-slate-200 w-28">HSN/SAC</th>
+                    <th className="px-4 py-3 border-b border-slate-200 w-32 text-right">Line Total (₹)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {items.map((item, idx) => {
+                    const offer = boqOffers[item.id] || getDefaultFinancialOffer(item);
+                    const qty = Number(item.quantity) || 1;
+                    return (
+                      <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-4 py-3 font-semibold text-slate-800">
+                          {idx + 1}. {item.itemName}
+                        </td>
+                        <td className="px-4 py-3 font-medium text-slate-600">
+                          {item.quantity} {item.unit}
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="text"
+                            value={offer.unitPrice}
+                            onChange={e => updateBoq(item.id, 'unitPrice', e.target.value, qty)}
+                            disabled={!canEdit}
+                            placeholder="0.00"
+                            className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm font-medium focus:border-[var(--bid-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--bid-primary)] disabled:bg-slate-50"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="text"
+                            value={offer.gstPercentage}
+                            onChange={e => updateBoq(item.id, 'gstPercentage', e.target.value, qty)}
+                            disabled={!canEdit}
+                            placeholder="18"
+                            className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm font-medium focus:border-[var(--bid-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--bid-primary)] disabled:bg-slate-50"
+                          />
+                        </td>
+                        <td className="px-4 py-3 font-medium text-slate-600">{item.hsnSac || item.hsn || item.sac || '-'}</td>
+                        <td className="px-4 py-3 text-right font-bold text-slate-900">
+                          ₹ {offer.lineTotal}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  <tr className="bg-slate-50/80 border-t-2 border-slate-200">
+                    <td colSpan={5} className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-slate-700">Grand Total Amount</td>
+                    <td className="px-4 py-3 text-right text-sm font-bold text-[var(--bid-primary)]">
+                      ₹ {quote.totalAmount || '0'}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
+      ) : (
+        <div className="mt-4 grid gap-4 md:grid-cols-3">
+          <Input
+            label={isBoq ? "Total Quoted Amount (from BOQ sheet)" : "Quoted amount"}
+            value={quote.quotedAmount}
+            onChange={next => setQuote(prev => ({ ...prev, quotedAmount: next.replace(/[^\d.]/g, '') }))}
+            disabled={!canEdit}
+            required
+            prefix="₹"
+          />
+          <Input
+            label="GST percentage"
+            value={quote.gstPercentage}
+            onChange={next => setQuote(prev => ({ ...prev, gstPercentage: next.replace(/[^\d.]/g, '') }))}
+            disabled={!canEdit}
+            required
+          />
+          <Input
+            label="Total amount"
+            value={quote.totalAmount}
+            onChange={next => setQuote(prev => ({ ...prev, totalAmount: next.replace(/[^\d.]/g, '') }))}
+            disabled={!canEdit}
+            prefix="₹"
+          />
+        </div>
       )}
-
-      <div className="mt-4 grid gap-4 md:grid-cols-3">
-        <Input
-          label={isBoq ? "Total Quoted Amount (from BOQ sheet)" : "Quoted amount"}
-          value={quote.quotedAmount}
-          onChange={next => setQuote(prev => ({ ...prev, quotedAmount: next.replace(/[^\d.]/g, '') }))}
-          disabled={!canEdit}
-          required
-          prefix="₹"
-        />
-        <Input
-          label="GST percentage"
-          value={quote.gstPercentage}
-          onChange={next => setQuote(prev => ({ ...prev, gstPercentage: next.replace(/[^\d.]/g, '') }))}
-          disabled={!canEdit}
-          required
-        />
-        <Input
-          label="Total amount"
-          value={quote.totalAmount}
-          onChange={next => setQuote(prev => ({ ...prev, totalAmount: next.replace(/[^\d.]/g, '') }))}
-          disabled={!canEdit}
-          prefix="₹"
-        />
-      </div>
 
       {isRateContract && (
         <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -1179,7 +1402,7 @@ function FinancialQuoteStep({
 
       <div className="mt-4">
         <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-          {isBoq ? "Upload Completed BOQ Excel sheet *" : "Upload Financial Proposal / Quote Document"}
+          Upload Financial Proposal / Quote Document
         </span>
         <UploadDropZone disabled={!canEdit} onFiles={files => onFile(Array.from(files)[0])} />
         {file && <FileList files={[file]} onRemove={onRemoveFile} onPreview={onPreview} />}
@@ -1187,11 +1410,10 @@ function FinancialQuoteStep({
 
       <UploadedList docs={uploadedDocs} title="Uploaded financial quote documents" />
 
-
       <div className="sticky bottom-0 z-10 mt-6 flex flex-col gap-3 border-t border-slate-100 bg-white/90 p-4 backdrop-blur sm:flex-row sm:justify-end">
         <button
           onClick={onSave}
-          disabled={!canSave || saving || !quote.quotedAmount || (isBoq && !file && !uploadedDocs.length) || (isRateContract && !rateContractData.validityDate)}
+          disabled={!canSave || saving || !quote.quotedAmount || (isRateContract && !rateContractData.validityDate)}
           className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0"
           style={{ backgroundColor: 'var(--bid-primary)' }}
         >
@@ -1199,85 +1421,6 @@ function FinancialQuoteStep({
         </button>
         <button onClick={onNext} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md">
           Continue <ArrowRight className="h-3.5 w-3.5" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ReviewStep({ bid, participation, technicalDocs, financialDocs, declaration, setDeclaration, onNext, disabled, onSaveDraft, savingDraft }: {
-  bid: ProcurementBid;
-  participation: ParticipationState | null;
-  technicalDocs: ParticipationDocument[];
-  financialDocs: ParticipationDocument[];
-  declaration: boolean;
-  setDeclaration: (value: boolean) => void;
-  onNext: () => void;
-  disabled?: boolean;
-  onSaveDraft: () => void;
-  savingDraft: boolean;
-}) {
-  return (
-    <div>
-      <StepTitle icon={<ClipboardCheck className="h-5 w-5" />} title="Review & Declaration" subtitle="Review the submission summary and accept the declaration before final submit." />
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
-        <Info label="Bid" value={`${bid.id} - ${bid.title}`} />
-        <Info label="Participation" value={participation?.id ? `#${participation.id}` : 'Not started'} />
-        <Info label="Technical documents" value={`${technicalDocs.length} uploaded`} />
-        {bid?.procurementType !== 'RFI' && (
-          <Info label="Financial quote" value={financialDocs.length || participation?.quotedAmount ? 'Saved' : 'Pending'} />
-        )}
-        <Info label="Current status" value={participation?.submissionStatus || 'Draft'} />
-      </div>
-      <label className={`mt-5 flex items-start gap-3 rounded-xl border p-4 text-xs font-bold transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm ${declaration ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-600'}`}>
-        <input type="checkbox" checked={declaration} onChange={event => setDeclaration(event.target.checked)} disabled={disabled} className="mt-0.5 h-4 w-4 disabled:opacity-50" style={{ accentColor: 'var(--bid-primary)' }} />
-        I confirm that the uploaded documents and financial quote are accurate, complete, and submitted by an authorized seller representative.
-      </label>
-      <div className="sticky bottom-0 z-10 mt-6 flex justify-end gap-3 border-t border-slate-100 bg-white/90 p-4 backdrop-blur">
-        {!disabled && (
-          <button type="button" onClick={onSaveDraft} disabled={savingDraft} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0">
-            {savingDraft ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />} Save as Draft
-          </button>
-        )}
-        <button onClick={onNext} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md" style={{ backgroundColor: 'var(--bid-primary)' }}>
-          Continue to submit <ArrowRight className="h-3.5 w-3.5" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function SubmitStep({ canSubmit, submitted, submitting, requirements, onSubmit }: {
-  canSubmit: boolean;
-  submitted: boolean;
-  submitting: boolean;
-  requirements: Array<{ ok: boolean; label: string }>;
-  onSubmit: () => void;
-}) {
-  return (
-    <div>
-      <StepTitle icon={<Send className="h-5 w-5" />} title="Submit Bid" subtitle="Final submission locks this participation for buyer evaluation." />
-      <div className={`${panelClass} mt-4 grid gap-3 p-5 text-center`}>
-        {submitted ? <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-600" /> : <Lock className="mx-auto h-10 w-10" style={{ color: 'var(--bid-primary)' }} />}
-        <p className="mt-3 text-sm font-semibold text-slate-800">{submitted ? 'Bid already submitted.' : 'Ready for final submission'}</p>
-        <p className="mt-1 text-xs text-slate-500">{submitted ? 'You can track evaluation progress now.' : 'Please ensure all files and quote values are correct before submitting.'}</p>
-        {!submitted && (
-          <div className="mx-auto mt-3 grid w-full max-w-2xl gap-2 sm:grid-cols-2">
-            {requirements.map(item => (
-              <div
-                key={item.label}
-                className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-[11px] font-semibold transition-all duration-200 ${item.ok ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-500'}`}
-              >
-                {item.ok ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" /> : <Circle className="h-4 w-4 shrink-0 text-slate-300" />}
-                <span>{item.label}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      <div className="sticky bottom-0 z-10 mt-6 flex flex-col gap-3 border-t border-slate-100 bg-white/90 p-4 backdrop-blur sm:flex-row sm:justify-end">
-        <button onClick={onSubmit} disabled={!canSubmit || submitting || submitted} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0" style={{ backgroundColor: 'var(--bid-primary)' }}>
-          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Final submit
         </button>
       </div>
     </div>
@@ -1398,6 +1541,149 @@ function UploadedList({ docs, title }: { docs: ParticipationDocument[]; title: s
           </div>
         )) : <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-3 text-xs font-bold text-slate-500">No server-uploaded files yet.</p>}
       </div>
+    </div>
+  );
+}
+
+function ReviewStep({ bid, participation, technicalDocs, financialDocs, technicalOffer, boqTechnicalOffers, quote, boqFinancialOffers, declaration, setDeclaration, onNext, disabled, onSaveDraft, savingDraft }: { bid: any; participation: any; technicalDocs: any[]; financialDocs: any[]; technicalOffer: any; boqTechnicalOffers: any; quote: any; boqFinancialOffers: any; declaration: boolean; setDeclaration: (val: boolean) => void; onNext: () => void; disabled?: boolean; onSaveDraft: () => void; savingDraft: boolean }) {
+  const isBoq = bid?.technicalPacket?.items && bid.technicalPacket.items.length > 0;
+  
+  return (
+    <div className="space-y-6">
+      <div className={panelClass}>
+        <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-800"><CheckCircle2 className="h-5 w-5 text-emerald-500" /> Summary of Technical Offer</h3>
+        {isBoq ? (
+          <div className="space-y-4">
+            {bid.technicalPacket.items.map((item: any, idx: number) => {
+              const offer = boqTechnicalOffers[item.id];
+              if (!offer) return null;
+              return (
+                <div key={item.id} className="rounded-lg border border-slate-100 bg-white p-4">
+                  <h4 className="mb-3 text-sm font-medium text-slate-800">{idx + 1}. {item.itemName}</h4>
+                  <div className="grid grid-cols-2 gap-4 text-sm text-slate-600 sm:grid-cols-4">
+                    <div><span className="block text-xs font-medium text-slate-400">Brand</span>{offer.makeBrand || '-'}</div>
+                    <div><span className="block text-xs font-medium text-slate-400">Model</span>{offer.model || '-'}</div>
+                    <div><span className="block text-xs font-medium text-slate-400">Warranty</span>{offer.warrantyDetails || '-'}</div>
+                    <div><span className="block text-xs font-medium text-slate-400">Delivery</span>{offer.deliveryTimeline || '-'}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4 rounded-lg bg-white p-4 text-sm">
+            <div><span className="block text-xs text-slate-500">Make / Brand</span>{technicalOffer?.makeBrand || '-'}</div>
+            <div><span className="block text-xs text-slate-500">Model</span>{technicalOffer?.model || '-'}</div>
+            <div className="col-span-2"><span className="block text-xs text-slate-500">Specifications Offered</span>{technicalOffer?.offeredItemDescription || '-'}</div>
+          </div>
+        )}
+      </div>
+
+      <div className={panelClass}>
+        <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-800"><CheckCircle2 className="h-5 w-5 text-emerald-500" /> Summary of Financial Quote</h3>
+        {isBoq ? (
+          <div className="rounded-lg border border-slate-100 bg-white overflow-hidden">
+            <table className="w-full text-left text-sm text-slate-600">
+              <thead className="bg-slate-50 text-xs font-medium text-slate-500">
+                <tr>
+                  <th className="p-3">Item Name</th>
+                  <th className="p-3 text-right">Qty</th>
+                  <th className="p-3 text-right">Unit Price</th>
+                  <th className="p-3 text-right">GST</th>
+                  <th className="p-3 text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bid.technicalPacket.items.map((item: any) => {
+                  const offer = boqFinancialOffers[item.id];
+                  if (!offer) return null;
+                  const up = parseFloat(offer.unitPrice) || 0;
+                  const qty = parseFloat(item.quantity) || 1;
+                  const gst = parseFloat(offer.gstPercentage) || 0;
+                  const lineTotal = (up * qty) * (1 + gst / 100);
+                  return (
+                    <tr key={item.id} className="border-t border-slate-100">
+                      <td className="p-3">{item.itemName}</td>
+                      <td className="p-3 text-right">{item.quantity} {item.unit}</td>
+                      <td className="p-3 text-right">₹{up.toFixed(2)}</td>
+                      <td className="p-3 text-right">{gst}%</td>
+                      <td className="p-3 text-right font-medium">₹{lineTotal.toFixed(2)}</td>
+                    </tr>
+                  );
+                })}
+                <tr className="bg-slate-50 font-bold text-slate-800">
+                  <td colSpan={4} className="p-3 text-right">Grand Total</td>
+                  <td className="p-3 text-right text-[var(--bid-primary)]">₹{parseFloat(quote?.totalAmount || '0').toFixed(2)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4 rounded-lg bg-white p-4 text-sm sm:grid-cols-3">
+            <div><span className="block text-xs text-slate-500">Quoted Amount</span>₹ {quote?.quotedAmount || '0'}</div>
+            <div><span className="block text-xs text-slate-500">GST</span>{quote?.gstPercentage || '0'}%</div>
+            <div><span className="block text-xs text-slate-500">Total Amount</span><strong className="text-[var(--bid-primary)]">₹ {parseFloat(quote?.totalAmount || '0').toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></div>
+          </div>
+        )}
+      </div>
+
+      <div className={panelClass + " border border-amber-100 bg-amber-50/30"}>
+        <h3 className="mb-4 text-sm font-semibold text-slate-800">Declarations & Undertakings</h3>
+        <div className="space-y-4">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <div className="pt-1"><input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-[var(--bid-primary)] focus:ring-[var(--bid-primary)]" checked={declaration} onChange={e => setDeclaration(e.target.checked)} disabled={disabled} /></div>
+            <div className="text-sm"><p className="font-medium text-slate-800">Acceptance of all terms, technical compliance, commercial authenticity, bid validity, and delivery commitment.</p></div>
+          </label>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+        <button onClick={onNext} disabled={!declaration} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0">
+          Continue <ArrowRight className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SubmitStep({ canSubmit, submitted, submitting, requirements, participation, onSubmit }: { canSubmit: boolean; submitted: boolean; submitting: boolean; requirements: any[]; participation: any; onSubmit: () => void }) {
+  return (
+    <div className={panelClass + " p-6 text-center"}>
+      <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-50">
+        <Send className="h-8 w-8 text-slate-400" />
+      </div>
+      <h3 className="text-lg font-bold text-slate-900">Final Submission</h3>
+      <p className="mt-2 text-sm text-slate-600">Review your checklist before final submission.</p>
+      
+      <div className="mt-6 flex flex-col gap-3 max-w-sm mx-auto text-left">
+        {requirements.map((req, i) => (
+          <ReadyRow key={i} ok={req.ok} label={req.label} />
+        ))}
+      </div>
+
+      {submitted && (
+        <div className="mt-8 rounded-xl border border-emerald-200 bg-emerald-50 p-6">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 mb-4">
+            <CheckCircle2 className="h-6 w-6" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-800">Bid Submitted Successfully</h2>
+          <p className="mt-2 text-sm text-slate-600">Your bid ID is: <strong>{participation?.participationNumber || participation?.id}</strong></p>
+          <div className="mt-6">
+            <Link href="/seller/bids" className="inline-flex h-10 items-center justify-center rounded-xl bg-slate-900 px-6 text-sm font-semibold text-white transition-colors hover:bg-slate-800">
+              Return to Dashboard
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {!submitted && (
+        <div className="mt-8 flex justify-center">
+          <button onClick={onSubmit} disabled={!canSubmit || submitting} className="inline-flex h-12 items-center justify-center gap-2 rounded-xl px-8 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md disabled:opacity-50 disabled:hover:translate-y-0" style={{ backgroundColor: 'var(--bid-primary)' }}>
+            {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <ShieldCheck className="h-5 w-5" />}
+            {submitting ? 'Submitting Final Bid...' : 'Submit Final Bid'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

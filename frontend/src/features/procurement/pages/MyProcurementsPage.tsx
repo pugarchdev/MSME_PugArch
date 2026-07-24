@@ -80,6 +80,7 @@ interface NormalizedProcurement {
   quantity?: string;
   unit?: string;
   organizationName?: string;
+  participantsCount?: number;
   documents?: Array<{ fileAssetId: number | null; fileName: string; documentType?: string; required?: boolean; instructions?: string }>;
   items?: Array<{
     itemName: string;
@@ -1626,7 +1627,7 @@ function ProcurementDetailView({
               </div>
               <div className="flex justify-between py-1 border-b border-slate-100">
                 <span className="font-semibold text-slate-500 uppercase tracking-wide text-[10px]">PARTICIPANTS</span>
-                <span className="font-bold text-slate-900">0</span>
+                <span className="font-bold text-slate-900">{p.participantsCount || (p.eligibilityCriteria?.length || 0)}</span>
               </div>
               <div className="flex justify-between py-1">
                 <span className="font-semibold text-slate-500 uppercase tracking-wide text-[10px]">CLARIFICATIONS</span>

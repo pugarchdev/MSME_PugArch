@@ -9261,21 +9261,7 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
     }),
     db.contract.findMany({
       where: {
-        contractType: 'RATE_CONTRACT',
-        OR: [
-          {
-            metadata: {
-              path: ['buyerId'],
-              equals: buyerId,
-            },
-          },
-          {
-            metadata: {
-              path: ['buyerId'],
-              equals: String(buyerId),
-            },
-          },
-        ],
+        contractType: 'RATE_CONTRACT'
       },
       orderBy: { updatedAt: 'desc' },
     }),
@@ -9357,6 +9343,7 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
     quantity: string;
     unit: string;
     organizationName: string;
+    participantsCount?: number;
     createdAt: string;
     updatedAt: string;
     actionUrl: string;
@@ -9968,6 +9955,31 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
     const srcReq = requirements.find(r => r.id === Number(metadata.requirementId) || r.requirementNumber === metadata.requirementNumber);
     const srcPayload = (srcReq as any)?.payload || {};
 
+    // Query supplier responses / quotations linked to this rate contract or its source requirement
+    const reqIds = Array.from(new Set([srcReq?.id, Number(metadata.requirementId || 0)].filter(Boolean) as number[]));
+    const selectedSupplierIds = (metadata.selectedSuppliers || []).map((s: any) => Number(s.supplierId || s.id)).filter(Boolean);
+    const allPossibleResponses = await db.requirementResponse.findMany({
+      where: {
+        OR: [
+          ...(reqIds.length > 0 ? [{ requirementId: { in: reqIds } }] : []),
+          ...(selectedSupplierIds.length > 0 ? [{ sellerUserId: { in: selectedSupplierIds } }] : []),
+          ...(selectedSupplierIds.length > 0 ? [{ sellerOrganizationId: { in: selectedSupplierIds } }] : [])
+        ]
+      },
+      include: {
+        sellerUser: { select: { id: true, name: true, email: true, mobile: true, role: true, organizationId: true } },
+        sellerOrganization: { select: { organizationName: true } }
+      }
+    }).catch(() => []);
+
+    const rateContractItemNames = itemRateSchedule.map((i: any) => String(i.itemName || '').toLowerCase().trim()).filter(Boolean);
+    const responses = allPossibleResponses.filter((r: any) => {
+      if (reqIds.includes(r.requirementId)) return true;
+      const respData = typeof r.responseData === 'string' ? JSON.parse(r.responseData) : (r.responseData || {});
+      const lineItems = Array.isArray(respData.lineItems) ? respData.lineItems : [];
+      return lineItems.some((item: any) => rateContractItemNames.includes(String(item.itemName || '').toLowerCase().trim()));
+    });
+
     const items = (srcReq?.items && srcReq.items.length > 0)
       ? srcReq.items.map((item: any) => ({
           itemName: item.itemName || item.name || '',
@@ -10012,6 +10024,8 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
       detailSection('Rate Contract Config', metadata),
     ].filter(Boolean) as Array<{ title: string; fields: Array<{ label: string; value: string }> }>;
 
+    const participantsCount = Math.max(responses.length, selectedSuppliers.length);
+
     all.push({
       id: contract.id,
       type: 'rate_contract',
@@ -10034,7 +10048,7 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
       organizationName: selectedSuppliers.map((supplier: any) => supplier.supplierName).filter(Boolean).join(', ') || (srcReq as any)?.organization?.organizationName || loggedInOrgName || '',
       createdAt: contract.createdAt?.toISOString?.() || '',
       updatedAt: contract.updatedAt?.toISOString?.() || '',
-      actionUrl: '/buyer/procurement?method=rate-contract',
+      actionUrl: `/bids/${contract.contractNumber || `RC-${contract.id}`}`,
       documents: [...contractDocs, ...reqDocs],
       items,
       paymentTerms: metadata.priceVariationClause || srcPayload.terms?.paymentTerms || '',
@@ -10046,6 +10060,7 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
         `Price Variation: ${metadata.priceVariationClause || 'FIXED_PRICE'}`
       ],
       detailSections: detailSections.length > 0 ? detailSections : undefined,
+      participantsCount,
     });
   }
 

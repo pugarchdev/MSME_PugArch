@@ -40,6 +40,8 @@ import { ViewModeToggle } from '../../shared/ViewModeToggle';
 import { useResponsiveViewMode } from '../../shared/hooks';
 import { EmptyState, LoadingState } from '../../shared/FeatureStates';
 
+import { getApi } from '../../shared/apiClient';
+
 const formatCurrency = (value: number | string | null | undefined) => {
   const num = Number(value || 0);
   if (num >= 10000000) return `₹${(num / 10000000).toFixed(2)} Cr`;
@@ -158,9 +160,52 @@ export default function SupplierResponsesPage() {
 
   const fetchBids = async () => {
     api.invalidate('/api/buyer/procurement-bids');
+    api.invalidate('/api/buyer/my-procurements');
     api.invalidate('/api/marketplace/requirements');
-    const bids = await procurementBidApi.getBuyerBids().catch(() => []);
-    return bids || [];
+
+    const [bids, myProcResult] = await Promise.all([
+      procurementBidApi.getBuyerBids().catch(() => []),
+      getApi<any>('/api/buyer/my-procurements', true).catch(() => null)
+    ]);
+
+    const combined = [...(bids || [])];
+    const existingRefNumbers = new Set(combined.map((b: any) => String(b.id || b.bidNumber || '').toUpperCase()));
+
+    const myProcurements: any[] = myProcResult?.procurements || [];
+    for (const p of myProcurements) {
+      const ref = String(p.referenceNumber || p.id || '').toUpperCase();
+      if (!existingRefNumbers.has(ref)) {
+        existingRefNumbers.add(ref);
+        combined.push({
+          id: p.referenceNumber || String(p.id),
+          buyerId: user?.id,
+          sourceModel: p.type?.toUpperCase() || 'RATE_CONTRACT',
+          sourceId: p.id,
+          title: p.title || `Procurement ${p.referenceNumber}`,
+          itemName: p.items?.[0]?.itemName || p.title || 'Rate Contract',
+          buyerName: p.organizationName || 'Buyer Organization',
+          buyerType: 'Private Enterprise',
+          departmentName: 'Procurement',
+          bidType: p.typeLabel || p.methodLabel || 'Rate Contract',
+          procurementType: p.methodLabel || p.typeLabel || 'Rate Contract',
+          category: p.category || 'Rate Contract',
+          location: p.deliveryLocation || 'Location not specified',
+          deliveryLocation: p.deliveryLocation || 'Delivery location not specified',
+          quantity: p.quantity ? `${p.quantity} ${p.unit || ''}`.trim() : 'Not specified',
+          estimatedValue: Number(p.estimatedValue || 0),
+          startDate: String(p.startDate || p.createdAt || new Date().toISOString()).slice(0, 10),
+          endDate: String(p.endDate || p.createdAt || new Date().toISOString()).slice(0, 10),
+          status: p.statusGroup === 'active' ? 'Open' : p.statusGroup === 'completed' ? 'Awarded' : p.statusGroup === 'cancelled' ? 'Closed' : (p.statusLabel || 'Open'),
+          participantsCount: p.participantsCount || (p.eligibilityCriteria?.length || 0),
+          participations: [],
+          type: p.type,
+          method: p.method,
+          detailSections: p.detailSections
+        });
+      }
+    }
+
+    return combined;
   };
 
   const { data: bids = [], isLoading: loading, isError, error: queryError, refetch, isFetching } = useQuery<any[]>({

@@ -190,8 +190,11 @@ export const normalizeBid = (raw: any): ProcurementBid => {
   const termsPayload = pkt?.terms || {};
   const internal = pkt?.internal || {};
 
-  // Title: prefer direct title, then payload basics
-  const title = raw.title || basics.title || '';
+  // Title: prefer direct title, then payload basics, then contract title or bidNumber
+  const rawTitle = raw.title || basics.title || raw.contractTitle || '';
+  const title = (rawTitle && rawTitle.trim() && rawTitle !== 'Untitled procurement bid')
+    ? rawTitle
+    : (raw.bidNumber ? `Procurement ${raw.bidNumber}` : (raw.id ? `Procurement Bid #${raw.id}` : 'Procurement Bid'));
 
   // Buyer name: prefer direct, then from organization, then payload
   const buyerName = raw.buyerOrganizationName
@@ -241,7 +244,7 @@ export const normalizeBid = (raw: any): ProcurementBid => {
     buyerId: raw.buyerId,
     sourceModel: raw.sourceModel || 'PROCUREMENT_BID',
     sourceId: raw.sourceId || raw.id,
-    title: title || 'Untitled procurement bid',
+    title,
     itemName: itemName || 'Procurement requirement',
     buyerName: buyerName || 'Buyer organization',
     buyerType: (raw.buyerType || basics.buyerType || 'Private Enterprise') as ProcurementBid['buyerType'],

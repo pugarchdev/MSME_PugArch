@@ -1274,7 +1274,7 @@ const auctionConfigSchema = z.object({
   minimumQualifiedBidders: z.coerce.number().int().min(2),
   auctionTermsDocument: z.object({
     fileAssetId: z.coerce.number().int().positive().optional().nullable(),
-    fileName: z.string().trim().max(260).optional().nullable()
+    fileName: z.string().trim().max(2000).optional().nullable()
   }).optional(),
   buyerMonitorSettings: z.record(z.string(), z.unknown()).default({}),
   triggerConfiguration: z.object({
@@ -1420,7 +1420,7 @@ const rateContractConfigSchema = z.object({
   approvalWorkflow: z.string().trim().min(2).max(200),
   contractDocument: z.object({
     fileAssetId: z.coerce.number().int().positive().optional().nullable(),
-    fileName: z.string().trim().max(260).optional().nullable()
+    fileName: z.string().trim().max(2000).optional().nullable()
   }).optional().nullable()
 }).passthrough();
 

@@ -4977,13 +4977,18 @@ const buildProcurementApiPayload = (draft: Draft, draftStep = 0) => {
   ];
 
   // Map compliance required documents checklist to document formats expected by backend file validators
+  const cleanDocName = (rawName?: string, fallback = 'attached_doc.pdf') => {
+    const raw = String(rawName || '').trim();
+    if (!raw) return fallback;
+    return raw.startsWith('data:') ? fallback : raw.slice(0, 1000);
+  };
   const mappedDocuments = draft.requiredDocs.map(doc => ({
     name: doc.name,
-    fileName: doc.fileName || (doc.name.toLowerCase().includes('boq') && draft.boqFileName 
+    fileName: cleanDocName(doc.fileName || (doc.name.toLowerCase().includes('boq') && draft.boqFileName 
       ? draft.boqFileName 
       : (doc.name.toLowerCase().includes('specification') && draft.items?.[0]?.specificationFileName 
         ? draft.items[0].specificationFileName 
-        : 'attached_doc.pdf')),
+        : undefined)), 'attached_doc.pdf'),
     fileAssetId: doc.fileAssetId || (doc.name.toLowerCase().includes('boq') ? draft.boqFileAssetId : null),
     required: doc.required
   }));
@@ -5030,6 +5035,11 @@ const buildProcurementApiPayload = (draft: Draft, draftStep = 0) => {
     department: draft.auctionConfig.department || draft.internal.department || draft.basics.department,
     purchaseOrganization: draft.auctionConfig.purchaseOrganization || draft.auctionConfig.buyerOrganization || draft.internal.orgName,
     estimatedValue,
+    termsDocumentName: cleanDocName(draft.auctionConfig.termsDocumentName, ''),
+    auctionTermsDocument: draft.auctionConfig.termsDocumentName ? {
+      fileAssetId: (draft.auctionConfig as any).auctionTermsDocument?.fileAssetId || null,
+      fileName: cleanDocName(draft.auctionConfig.termsDocumentName, '')
+    } : undefined,
     qualifiedVendors: draft.vendors.invitedSellers.map(sellerOrgId =>
       typeof sellerOrgId === 'object' && sellerOrgId !== null
         ? sellerOrgId
@@ -5049,6 +5059,10 @@ const buildProcurementApiPayload = (draft: Draft, draftStep = 0) => {
     contractDescription: draft.rateContractConfig.contractDescription || draft.basics.justification || basics.description,
     contractCategory: draft.rateContractConfig.contractCategory || draft.basics.category,
     contractSubCategory: draft.rateContractConfig.contractSubCategory || draft.basics.subCategory,
+    contractDocument: draft.rateContractConfig.contractDocument?.fileName ? {
+      fileAssetId: draft.rateContractConfig.contractDocument.fileAssetId || null,
+      fileName: cleanDocName(draft.rateContractConfig.contractDocument.fileName, '')
+    } : null,
     selectedSuppliers: draft.rateContractConfig.selectedSuppliers.length
       ? draft.rateContractConfig.selectedSuppliers
       : draft.vendors.invitedSellers.map(supplierId => ({ supplierId })),

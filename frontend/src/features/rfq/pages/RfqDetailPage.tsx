@@ -32,6 +32,12 @@ import {
   Wrench,
   Gavel,
   TrendingUp,
+  Tag,
+  Building,
+  Zap,
+  UserCheck,
+  CheckCircle2,
+  Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getApi } from '../../shared/apiClient';
@@ -1573,6 +1579,21 @@ export default function RfqDetailPage() {
           return Layers;
         };
 
+        const getFieldIcon = (label: string) => {
+          const l = label.toLowerCase();
+          if (l.includes('title') || l.includes('name')) return FileText;
+          if (l.includes('category')) return Tag;
+          if (l.includes('buyer') || l.includes('org')) return Building;
+          if (l.includes('value') || l.includes('amount') || l.includes('budget') || l.includes('price') || l.includes('rate')) return IndianRupee;
+          if (l.includes('location') || l.includes('address') || l.includes('consignee')) return MapPin;
+          if (l.includes('buying') || l.includes('item') || l.includes('product') || l.includes('what')) return Package;
+          if (l.includes('method') || l.includes('strategy') || l.includes('type')) return Zap;
+          if (l.includes('date') || l.includes('time') || l.includes('deadline')) return CalendarDays;
+          if (l.includes('user') || l.includes('person') || l.includes('contact')) return UserCheck;
+          if (l.includes('status') || l.includes('state')) return CheckCircle2;
+          return Info;
+        };
+
         const getSectionStatus = (sec: { title: string; fields: Array<{ label: string; value: string }> }) => {
           if (!sec.fields || sec.fields.length === 0) {
             return { label: 'Optional', badgeClass: 'bg-slate-100 text-slate-600 border-slate-200' };
@@ -1594,19 +1615,29 @@ export default function RfqDetailPage() {
         return (
           <section id="additional-metadata" className="scroll-mt-24 space-y-4">
             {/* Header Banner */}
-            <div className="border border-slate-200/80 rounded-2xl bg-white p-5 shadow-xs flex items-center justify-between transition-all duration-300 hover:shadow-md">
-              <div className="flex items-center gap-3.5">
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700 border border-indigo-200 shadow-2xs">
+            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#0b2447] via-[#12335f] to-[#1e4b8a] p-5 shadow-md border border-indigo-900/40 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="absolute -right-10 -top-10 h-36 w-36 rounded-full bg-white/5 blur-3xl pointer-events-none" />
+              <div className="flex items-center gap-3.5 relative z-10">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-amber-400 border border-white/20 shadow-inner backdrop-blur-md shrink-0 font-bold">
                   <Layers className="h-5.5 w-5.5" />
                 </span>
                 <div>
-                  <h2 className="text-base font-black tracking-tight text-[#12335f] uppercase flex items-center gap-2.5">
+                  <h2 className="text-base font-black tracking-tight uppercase flex items-center gap-2 text-white">
                     <span>COMPREHENSIVE PROCUREMENT DETAILS</span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/20 px-2.5 py-0.5 text-[9px] font-black text-amber-300 border border-amber-400/30 uppercase tracking-widest">
+                      <Sparkles className="h-2.5 w-2.5" />
+                      RFQ Specs
+                    </span>
                   </h2>
-                  <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                  <p className="text-xs text-slate-300 font-medium mt-0.5">
                     Specifications, terms, and requirements for this RFQ.
                   </p>
                 </div>
+              </div>
+              <div className="flex items-center gap-2 relative z-10 shrink-0">
+                <span className="px-3 py-1 rounded-xl text-[11px] font-black bg-white/10 text-amber-300 border border-white/20 backdrop-blur-md shadow-2xs">
+                  {detailSections.length} Sections Defined
+                </span>
               </div>
             </div>
 
@@ -1651,7 +1682,7 @@ export default function RfqDetailPage() {
               
               {/* Sticky Left Vertical Navigation Sidebar */}
               <div className="hidden lg:block lg:col-span-4 xl:col-span-3 sticky top-24 space-y-2">
-                <div className="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-xs space-y-1.5 transition-all duration-300 hover:shadow-md">
+                <div className="bg-white border border-slate-200/90 rounded-2xl p-3.5 shadow-xs space-y-1.5 transition-all duration-300 hover:shadow-md">
                   <div className="px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-1 flex items-center justify-between">
                     <span>Navigation Panel</span>
                     <span className="text-slate-400 font-semibold">{detailSections.length} Items</span>
@@ -1676,8 +1707,8 @@ export default function RfqDetailPage() {
                         className={cn(
                           "w-full flex items-center justify-between p-3 rounded-xl text-left transition-all duration-200 group border text-xs font-bold",
                           isActive
-                            ? "bg-[#12335f] text-white border-[#12335f] shadow-md border-l-4 border-l-amber-400 scale-[1.01]"
-                            : "bg-slate-50/50 hover:bg-slate-100/80 text-slate-700 border-slate-200/80 hover:border-slate-300 border-l-4 border-l-transparent"
+                            ? "bg-gradient-to-r from-[#12335f] to-[#1e4b8a] text-white border-[#12335f] shadow-md border-l-4 border-l-amber-400 scale-[1.01]"
+                            : "bg-slate-50/60 hover:bg-slate-100/90 text-slate-700 border-slate-200/80 hover:border-indigo-200 border-l-4 border-l-transparent"
                         )}
                       >
                         <div className="flex items-center gap-2.5 truncate pr-1">
@@ -1693,7 +1724,7 @@ export default function RfqDetailPage() {
                         <div className="flex items-center gap-1.5 shrink-0">
                           <span className={cn(
                             "px-2 py-0.5 rounded-md text-[9px] font-black uppercase border tracking-wider",
-                            isActive ? "bg-white/20 text-white border-white/30" : status.badgeClass
+                            isActive ? "bg-emerald-500/20 text-emerald-300 border-emerald-400/30" : status.badgeClass
                           )}>
                             {status.label}
                           </span>
@@ -1708,7 +1739,7 @@ export default function RfqDetailPage() {
                 </div>
               </div>
 
-              {/* Right-Side Detailed Content Cards */}
+              {/* Right-Side Detailed Content Cards (Review Summary Format) */}
               <div className="lg:col-span-8 xl:col-span-9 space-y-6">
                 {detailSections.map((sec, idx) => {
                   const SectionIcon = getSectionIcon(sec.title);
@@ -1722,98 +1753,116 @@ export default function RfqDetailPage() {
                       className={cn(
                         "scroll-mt-28 rounded-2xl border bg-white p-6 shadow-xs transition-all duration-300 space-y-5",
                         isActive
-                          ? "border-[#12335f]/40 shadow-md ring-2 ring-[#12335f]/10 border-l-4 border-l-[#12335f]"
-                          : "border-slate-200/80 hover:border-slate-300"
+                          ? "border-[#12335f]/50 shadow-md ring-2 ring-[#12335f]/10 border-l-4 border-l-[#12335f]"
+                          : "border-slate-200/90 hover:border-slate-300"
                       )}
                     >
-                      {/* Content Header */}
+                      {/* Section Content Header */}
                       <div className="flex items-center justify-between pb-4 border-b border-slate-100">
                         <div className="flex items-center gap-3">
-                          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#12335f]/10 text-[#12335f] border border-[#12335f]/20 shadow-2xs font-bold">
-                            <SectionIcon className="h-4.5 w-4.5" />
+                          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#12335f] to-indigo-900 text-white shadow-xs font-bold shrink-0">
+                            <SectionIcon className="h-5 w-5" />
                           </span>
                           <div>
-                            <h3 className="text-sm font-black uppercase tracking-wider text-slate-900">{sec.title}</h3>
-                            <p className="text-[11px] text-slate-400 font-semibold">{sec.fields.length} {sec.fields.length === 1 ? 'parameter' : 'parameters'} defined</p>
+                            <h3 className="text-base font-black uppercase tracking-wide text-[#12335f]">{sec.title}</h3>
+                            <p className="text-xs text-slate-400 font-semibold">{sec.fields.length} {sec.fields.length === 1 ? 'parameter' : 'parameters'} defined</p>
                           </div>
                         </div>
 
-                        <span className={cn("px-2.5 py-1 rounded-md text-[10px] font-black uppercase border tracking-wider shadow-2xs", status.badgeClass)}>
+                        <span className={cn("px-3 py-1 rounded-md text-[10px] font-black uppercase border tracking-wider shadow-2xs", status.badgeClass)}>
                           {status.label}
                         </span>
                       </div>
 
-                      {/* Enterprise Description List & Property Grid */}
+                      {/* Content Body: Full-Width Information Card with 2-Column Desktop Grid */}
                       {(() => {
                         const longTextFields = sec.fields.filter(f => {
                           const val = String(f.value || '');
-                          return val.length > 80 || f.label.toLowerCase().includes('description') || f.label.toLowerCase().includes('reason') || f.label.toLowerCase().includes('justification') || f.label.toLowerCase().includes('notes');
+                          return val.length > 80 || f.label.toLowerCase().includes('description') || f.label.toLowerCase().includes('reason') || f.label.toLowerCase().includes('justification') || f.label.toLowerCase().includes('notes') || f.label.toLowerCase().includes('scope') || f.label.toLowerCase().includes('terms');
                         });
 
                         const propertyFields = sec.fields.filter(f => !longTextFields.includes(f));
 
                         return (
-                          <div className="space-y-4">
-                            {/* Property Grid (Clean Spec Sheet Style with Subtle Hairline Dividers) */}
+                          <div className="space-y-5">
+                            {/* Full-width Grouped Information Card (2-Column Grid on Desktop) */}
                             {propertyFields.length > 0 && (
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-4 bg-gradient-to-br from-slate-50/80 via-slate-50/40 to-white p-5 rounded-2xl border border-slate-200/70 shadow-2xs">
-                                {propertyFields.map((field, fieldIdx) => {
-                                  const formattedVal = formatDisplayValue(field.value, field.label);
-                                  const strVal = String(field.value).trim().toLowerCase();
-                                  const isYes = strVal === 'yes' || strVal === 'true';
-                                  const isNo = strVal === 'no' || strVal === 'false';
-                                  const isCurrency = field.label.toLowerCase().includes('value') || field.label.toLowerCase().includes('price') || field.label.toLowerCase().includes('amount') || field.label.toLowerCase().includes('budget');
+                              <div className="rounded-xl border border-slate-200/80 bg-slate-50/40 p-5 shadow-2xs">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
+                                  {propertyFields.map((field, fieldIdx) => {
+                                    const formattedVal = formatDisplayValue(field.value, field.label);
+                                    const strVal = String(field.value).trim().toLowerCase();
+                                    const isYes = strVal === 'yes' || strVal === 'true';
+                                    const isNo = strVal === 'no' || strVal === 'false';
+                                    const isCurrency = field.label.toLowerCase().includes('value') || field.label.toLowerCase().includes('price') || field.label.toLowerCase().includes('amount') || field.label.toLowerCase().includes('budget');
+                                    const isTitle = field.label.toLowerCase().includes('title');
+                                    const FieldIcon = getFieldIcon(field.label);
 
-                                  return (
-                                    <div
-                                      key={`${field.label}-${fieldIdx}`}
-                                      className="flex flex-col py-1.5 border-b border-slate-200/60 last:border-b-0 group"
-                                    >
-                                      <span className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400 group-hover:text-[#12335f] transition-colors flex items-center gap-1">
-                                        <span className="h-1 w-1 rounded-full bg-slate-300 group-hover:bg-blue-600 transition-colors" />
-                                        {field.label}
-                                      </span>
-                                      <div className="mt-1">
-                                        {isYes ? (
-                                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-black text-emerald-700 border border-emerald-200/80 uppercase shadow-2xs">
-                                            ✓ Yes
-                                          </span>
-                                        ) : isNo ? (
-                                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-black text-slate-600 border border-slate-200 uppercase shadow-2xs">
-                                            No
-                                          </span>
-                                        ) : (
-                                          <span className={cn(
-                                            "text-xs font-black leading-relaxed break-words",
-                                            isCurrency ? "text-emerald-700 text-sm font-black" : "text-slate-900"
-                                          )}>
-                                            {formattedVal}
-                                          </span>
+                                    return (
+                                      <div
+                                        key={`${field.label}-${fieldIdx}`}
+                                        className={cn(
+                                          "flex flex-col space-y-1.5 pb-3 border-b border-slate-200/60 last:border-b-0 md:last:border-b-0",
+                                          isTitle ? "col-span-full md:col-span-2 pb-4 border-b border-slate-200" : ""
                                         )}
+                                      >
+                                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+                                          <FieldIcon className="h-3.5 w-3.5 text-indigo-600/70 shrink-0" />
+                                          {field.label}
+                                        </span>
+                                        <div className="pt-0.5">
+                                          {isYes ? (
+                                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700 border border-emerald-200 uppercase shadow-2xs">
+                                              ✓ Yes
+                                            </span>
+                                          ) : isNo ? (
+                                            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-600 border border-slate-200 uppercase shadow-2xs">
+                                              No
+                                            </span>
+                                          ) : isCurrency ? (
+                                            <span className="inline-flex items-center gap-1 text-sm font-extrabold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-200 shadow-2xs">
+                                              {formattedVal}
+                                            </span>
+                                          ) : (
+                                            <span className={cn(
+                                              "text-sm font-extrabold text-slate-900 leading-relaxed break-words whitespace-normal",
+                                              isTitle ? "text-base text-[#12335f]" : ""
+                                            )}>
+                                              {formattedVal}
+                                            </span>
+                                          )}
+                                        </div>
                                       </div>
-                                    </div>
-                                  );
-                                })}
+                                    );
+                                  })}
+                                </div>
                               </div>
                             )}
 
-                            {/* Long Text Callout Blocks */}
+                            {/* Dedicated Full-Width Cards for Long Text Fields */}
                             {longTextFields.length > 0 && (
-                              <div className="space-y-3">
-                                {longTextFields.map((field, fieldIdx) => (
-                                  <div
-                                    key={`long-${field.label}-${fieldIdx}`}
-                                    className="p-4 rounded-2xl bg-gradient-to-r from-blue-50/40 via-indigo-50/20 to-white border border-blue-100/80 border-l-4 border-l-[#12335f] shadow-2xs hover:shadow-xs transition-all"
-                                  >
-                                    <span className="text-[10px] font-black uppercase tracking-wider text-[#12335f] block mb-1.5 flex items-center gap-1.5">
-                                      <FileText className="h-3.5 w-3.5 text-blue-600" />
-                                      {field.label}
-                                    </span>
-                                    <p className="text-xs font-semibold leading-relaxed text-slate-800 whitespace-pre-wrap break-words">
-                                      {formatDisplayValue(field.value, field.label)}
-                                    </p>
-                                  </div>
-                                ))}
+                              <div className="space-y-4 pt-1">
+                                {longTextFields.map((field, fieldIdx) => {
+                                  const FieldIcon = getFieldIcon(field.label);
+                                  return (
+                                    <div
+                                      key={`long-${field.label}-${fieldIdx}`}
+                                      className="rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50/30 via-slate-50/40 to-white p-5 shadow-2xs border-l-4 border-l-[#12335f] space-y-2"
+                                    >
+                                      <div className="flex items-center gap-2 pb-2 border-b border-indigo-100/60">
+                                        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#12335f] text-white shadow-2xs shrink-0">
+                                          <FieldIcon className="h-3.5 w-3.5" />
+                                        </span>
+                                        <span className="text-xs font-extrabold uppercase tracking-wider text-[#12335f]">
+                                          {field.label}
+                                        </span>
+                                      </div>
+                                      <p className="text-xs md:text-sm font-semibold leading-relaxed text-slate-800 whitespace-pre-wrap break-words">
+                                        {formatDisplayValue(field.value, field.label)}
+                                      </p>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             )}
                           </div>

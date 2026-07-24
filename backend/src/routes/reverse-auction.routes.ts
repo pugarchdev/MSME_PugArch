@@ -88,7 +88,7 @@ const auctionFieldsSchema = z.object({
   rankVisibility: z.enum(['SHOW_RANK_ONLY', 'SHOW_LOWEST_PRICE', 'HIDDEN']).default('SHOW_RANK_ONLY'),
   minimumQualifiedBidders: z.coerce.number().int().min(2).default(2),
   termsDocumentFileId: z.coerce.number().int().positive().optional(),
-  termsDocumentName: z.string().trim().max(260).optional(),
+  termsDocumentName: z.string().trim().max(2000).optional(),
   buyerMonitorSettings: z.record(z.string(), z.unknown()).optional(),
   preBidStage: z.record(z.string(), z.unknown()).optional(),
   auctionTrigger: z.enum(['AFTER_TECHNICAL_QUALIFICATION', 'TOP_N_BIDDERS', 'ALL_TECHNICALLY_QUALIFIED']).optional(),

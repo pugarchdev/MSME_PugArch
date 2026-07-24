@@ -9821,12 +9821,24 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
   for (const r of requirements) {
     const payload = (r as any).payload || {};
 
-    // Deduplication logic: Skip if this requirement has been converted to a ProcurementBid or DirectPurchase
-    const hasLinkedBid = procurementBids.some(b => b.bidNumber === r.requirementNumber || b.id === payload.linkedProcurementBidId);
+    // Deduplication logic: Skip if this requirement has been converted to a ProcurementBid, DirectPurchase, or RateContract
+    const hasLinkedBid = procurementBids.some(b =>
+      b.bidNumber === r.requirementNumber ||
+      b.id === payload.linkedProcurementBidId ||
+      Number((b.technicalPacket as any)?.sourceRequirementId || (b.technicalPacket as any)?.requirementId || 0) === r.id
+    );
     if (hasLinkedBid) continue;
 
     const hasLinkedDP = directPurchases.some(dp => Number(dp.requirementId) === r.id);
     if (hasLinkedDP) continue;
+
+    const hasLinkedRateContract = rateContracts.some(rc => {
+      const meta = (rc.metadata || {}) as any;
+      return Number(meta.requirementId || 0) === r.id ||
+             meta.requirementNumber === r.requirementNumber ||
+             rc.contractNumber === r.requirementNumber;
+    });
+    if (hasLinkedRateContract) continue;
 
     const methodSlug = String(r.procurementMethod || 'TENDER').toLowerCase().replace(/_/g, '-');
     const linkedAuction = auctionsByRequirementId[r.id];
@@ -9951,48 +9963,89 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
     const expired = contract.endDate ? contract.endDate < new Date() : false;
     const itemRateSchedule = Array.isArray(metadata.itemRateSchedule) ? metadata.itemRateSchedule : [];
     const selectedSuppliers = Array.isArray(metadata.selectedSuppliers) ? metadata.selectedSuppliers : [];
+
+    // Find linked source requirement to pull full items, specifications, and detail sections
+    const srcReq = requirements.find(r => r.id === Number(metadata.requirementId) || r.requirementNumber === metadata.requirementNumber);
+    const srcPayload = (srcReq as any)?.payload || {};
+
+    const items = (srcReq?.items && srcReq.items.length > 0)
+      ? srcReq.items.map((item: any) => ({
+          itemName: item.itemName || item.name || '',
+          quantity: String(item.quantity || ''),
+          unitOfMeasure: item.unitOfMeasure || item.unit || '',
+          description: item.description || '',
+          estimatedUnitPrice: item.estimatedUnitPrice !== null && item.estimatedUnitPrice !== undefined ? Number(item.estimatedUnitPrice) : undefined,
+          specifications: item.specifications || undefined
+        }))
+      : itemRateSchedule.map((item: any) => ({
+          itemName: item.itemName,
+          quantity: String(item.estimatedAnnualQuantity || ''),
+          unitOfMeasure: item.uom || '',
+          description: item.specification || '',
+          estimatedUnitPrice: Number(item.baseRate || 0),
+          specifications: item
+        }));
+
+    const contractDocs = metadata.contractDocument?.fileAssetId ? [{
+      fileAssetId: metadata.contractDocument.fileAssetId,
+      fileName: metadata.contractDocument.fileName || 'Rate Contract Document',
+      documentType: 'Rate Contract Document'
+    }] : [];
+    const reqDocs = srcReq ? (requirementAssets[srcReq.id] || []) : [];
+
+    const detailSections = [
+      detailSection('Procurement Intent', {
+        ...(srcPayload.basics || {}),
+        buyerType: srcPayload.buyerType,
+        buyingType: srcPayload.buyingType,
+        recommendedMethod: srcPayload.recommendation?.id,
+        recommendationReason: srcPayload.recommendation?.reason,
+      }),
+      detailSection('Internal Buyer Details', srcPayload.internal),
+      detailSection('Consignee Details', { consigneeDetails: srcPayload.consigneeDetails }),
+      detailSection('Vendor / Supplier Selection', srcPayload.vendors),
+      detailSection('Timeline & Rules', { ...(srcPayload.schedule || {}), ...(srcPayload.tender || {}), ...(srcPayload.rules || {}) }),
+      detailSection('Commercial Terms', srcPayload.terms),
+      detailSection('Evaluation Basis', srcPayload.evaluation),
+      detailSection('Approval Notes', srcPayload.approval),
+      detailSection('Service Details', srcPayload.serviceDetails),
+      detailSection('Rate Contract Config', metadata),
+    ].filter(Boolean) as Array<{ title: string; fields: Array<{ label: string; value: string }> }>;
+
     all.push({
       id: contract.id,
       type: 'rate_contract',
       typeLabel: 'Rate Contract',
-      title: contract.title || `Rate Contract ${contract.contractNumber}`,
+      title: contract.title || srcReq?.title || `Rate Contract ${contract.contractNumber}`,
       referenceNumber: contract.contractNumber || `RC-${contract.id}`,
       status: expired ? 'EXPIRED' : String(contract.status || 'ACTIVE'),
       statusLabel: expired ? 'Expired' : statusLabel(String(contract.status || 'ACTIVE')),
       statusGroup: expired ? 'cancelled' : 'active',
       method: 'rate-contract',
       methodLabel: 'Rate Contract',
-      estimatedValue: Number(contract.value || 0),
-      category: metadata.contractCategory || '',
-      description: metadata.contractDescription || '',
-      deliveryLocation: metadata.deliverySla || '',
+      estimatedValue: Number(contract.value || srcReq?.estimatedValue || 0),
+      category: metadata.contractCategory || srcReq?.category?.name || srcPayload.basics?.category || '',
+      description: metadata.contractDescription || srcReq?.description || srcPayload.basics?.description || '',
+      deliveryLocation: metadata.deliverySla || srcPayload.basics?.deliveryLocation || (srcReq as any)?.deliveryLocation || '',
       startDate: contract.startDate?.toISOString?.() || '',
       endDate: contract.endDate?.toISOString?.() || '',
-      quantity: String(itemRateSchedule.reduce((sum: number, item: any) => sum + Number(item.estimatedAnnualQuantity || 0), 0)),
-      unit: itemRateSchedule[0]?.uom || '',
-      organizationName: selectedSuppliers.map((supplier: any) => supplier.supplierName).filter(Boolean).join(', '),
+      quantity: String(items.reduce((sum: number, item: any) => sum + Number(item.quantity || 0), 0) || 1),
+      unit: items[0]?.unitOfMeasure || 'Nos',
+      organizationName: selectedSuppliers.map((supplier: any) => supplier.supplierName).filter(Boolean).join(', ') || (srcReq as any)?.organization?.organizationName || loggedInOrgName || '',
       createdAt: contract.createdAt?.toISOString?.() || '',
       updatedAt: contract.updatedAt?.toISOString?.() || '',
       actionUrl: '/buyer/procurement?method=rate-contract',
-      documents: metadata.contractDocument?.fileAssetId ? [{
-        fileAssetId: metadata.contractDocument.fileAssetId,
-        fileName: metadata.contractDocument.fileName || 'Rate Contract Document',
-        documentType: 'Rate Contract Document'
-      }] : [],
-      items: itemRateSchedule.map((item: any) => ({
-        itemName: item.itemName,
-        quantity: String(item.estimatedAnnualQuantity || ''),
-        unitOfMeasure: item.uom || '',
-        description: item.specification || ''
-      })),
-      paymentTerms: metadata.priceVariationClause || '',
-      eligibilityCriteria: selectedSuppliers.map((supplier: any) => supplier.supplierName || `Supplier ${supplier.supplierId}`),
+      documents: [...contractDocs, ...reqDocs],
+      items,
+      paymentTerms: metadata.priceVariationClause || srcPayload.terms?.paymentTerms || '',
+      eligibilityCriteria: selectedSuppliers.length > 0 ? selectedSuppliers.map((supplier: any) => supplier.supplierName || `Supplier ${supplier.supplierId}`) : [],
       termsAndConditions: [
         `Validity: ${contract.startDate?.toISOString?.().slice(0, 10) || '-'} to ${contract.endDate?.toISOString?.().slice(0, 10) || '-'}`,
         `Rate Validity: ${metadata.rateValidityPeriod || '-'}`,
         `Call-off Orders: ${metadata.callOffOrderAllowed ? 'Allowed' : 'Not Allowed'}`,
         `Price Variation: ${metadata.priceVariationClause || 'FIXED_PRICE'}`
-      ]
+      ],
+      detailSections: detailSections.length > 0 ? detailSections : undefined,
     });
   }
 
@@ -10062,7 +10115,17 @@ router.get('/buyer/my-procurements', authenticate, authorize('buyer'), asyncRout
     });
   }
 
-  let filtered = all;
+  // Extra safety deduplication by referenceNumber/id
+  const seenKeys = new Set<string>();
+  const deduplicatedAll: NormalizedProcurement[] = [];
+  for (const item of all) {
+    const key = item.referenceNumber ? `ref-${item.referenceNumber}` : `id-${item.type}-${item.id}`;
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
+    deduplicatedAll.push(item);
+  }
+
+  let filtered = deduplicatedAll;
   if (type) {
     filtered = filtered.filter(p => p.type === type);
   }
